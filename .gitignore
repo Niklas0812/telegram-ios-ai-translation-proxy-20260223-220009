@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs and local runtime files
+server/server.log
+*.log
+
+# Telegram upstream checkout / build outputs
+vendor/
+out/
+artifacts/
+DerivedData/
+*.ipa
+
+# macOS
+.DS_Store

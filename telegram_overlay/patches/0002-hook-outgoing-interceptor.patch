@@ -1,0 +1,3 @@
+# PLACEHOLDER_PATCH
+# 0002-hook-outgoing-interceptor.patch
+# Intended scope: outgoing text send path interception before enqueueMessages.

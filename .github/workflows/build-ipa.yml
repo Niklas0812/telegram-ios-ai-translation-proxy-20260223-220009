@@ -1,0 +1,121 @@
+name: Build Telegram IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      apply_ai_patches:
+        description: 'Apply AI translation patch series (disabled by default until patches are finalized)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    env:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || 'TELEGRAM_API_ID_PLACEHOLDER' }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || 'TELEGRAM_API_HASH_PLACEHOLDER' }}
+      TELEGRAM_BUNDLE_ID: com.aitranslate.messenger
+      TELEGRAM_APP_NAME: TranslateGram
+      TELEGRAM_IOS_REPO: https://github.com/TelegramMessenger/Telegram-iOS.git
+      TELEGRAM_IOS_REF: master
+      APPLY_AI_PATCHES: ${{ github.event.inputs.apply_ai_patches == 'true' && '1' || '0' }}
+    steps:
+      - name: Checkout overlay repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone Telegram-iOS
+        run: ./telegram_overlay/scripts/clone_telegram_ios.sh vendor/Telegram-iOS
+
+      - name: Detect Xcode version from Telegram versions.json
+        id: xcode
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          versions = Path('vendor/Telegram-iOS/versions.json')
+          version = 'latest-stable'
+          if versions.exists():
+              try:
+                  data = json.loads(versions.read_text())
+                  candidates = []
+                  if isinstance(data, dict):
+                      for k, v in data.items():
+                          if isinstance(v, str) and 'xcode' in k.lower():
+                              candidates.append(v)
+                          elif isinstance(v, dict):
+                              for sk, sv in v.items():
+                                  if isinstance(sv, str) and 'xcode' in sk.lower():
+                                      candidates.append(sv)
+                  if candidates:
+                      version = candidates[0]
+              except Exception:
+                  pass
+          print(f"xcode_version={version}")
+          with open(Path('.github_xcode_output.txt'), 'w') as f:
+              f.write(version)
+          PY
+          echo "xcode_version=$(cat .github_xcode_output.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ steps.xcode.outputs.xcode_version }}
+        continue-on-error: true
+
+      - name: Apply overlay files and patches
+        run: ./telegram_overlay/scripts/apply_overlay.sh vendor/Telegram-iOS
+
+      - name: Configure Telegram build placeholders
+        run: ./telegram_overlay/scripts/configure_telegram_build.sh vendor/Telegram-iOS
+
+      - name: Attempt Telegram-iOS build (scaffold)
+        working-directory: vendor/Telegram-iOS
+        run: |
+          set -euo pipefail
+          if [[ -f build-system/Make/Make.py ]]; then
+            echo "Found build-system/Make/Make.py"
+            python3 build-system/Make/Make.py --help || true
+          elif [[ -f Make.py ]]; then
+            echo "Found Make.py"
+            python3 Make.py --help || true
+          else
+            echo "Could not locate Telegram-iOS Make.py entrypoint"
+          fi
+          echo "Telegram-iOS build command wiring is scaffolded but requires upstream revision-specific config integration."
+
+      - name: Locate app bundle (best-effort)
+        id: appbundle
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find vendor/Telegram-iOS -type d -name '*.app' | head -n 1 || true)"
+          if [[ -n "$APP_PATH" ]]; then
+            echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          else
+            echo "app_path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package IPA (best-effort)
+        if: ${{ steps.appbundle.outputs.app_path != '' }}
+        run: |
+          mkdir -p artifacts
+          ./telegram_overlay/scripts/package_unsigned_ipa.sh "${{ steps.appbundle.outputs.app_path }}" "$(pwd)/artifacts/TranslateGram.ipa"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-ios-build-artifacts
+          path: |
+            artifacts/**
+            vendor/Telegram-iOS/build-inputs/**
+          if-no-files-found: warn
