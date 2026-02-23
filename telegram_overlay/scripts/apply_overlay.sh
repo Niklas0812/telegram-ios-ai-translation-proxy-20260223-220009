@@ -13,7 +13,7 @@ FILES_DIR="$OVERLAY_ROOT/files"
 PATCH_DIR="$OVERLAY_ROOT/patches"
 APPLY_AI_PATCHES="${APPLY_AI_PATCHES:-0}"
 
-if [[ ! -d "$TG_DIR/.git" ]]; then
+if ! git -C "$TG_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Not a Telegram-iOS git checkout: $TG_DIR"
   exit 1
 fi

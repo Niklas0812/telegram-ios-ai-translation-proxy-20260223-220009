@@ -1,3 +1,92 @@
-# PLACEHOLDER_PATCH
-# 0005-chat-header-toggle-and-indicators.patch
-# Intended scope: per-chat header toggle + translated message indicators + Show Original action.
+diff --git a/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift b/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift
+index c1ba97148d..4aedddbd02 100644
+--- a/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift
++++ b/submodules/TelegramUI/Sources/Chat/UpdateChatPresentationInterfaceState.swift
+@@ -552,6 +552,10 @@ func updateChatPresentationInterfaceStateImpl(
+     if let secondaryRightNavigationButton = selfController.secondaryRightNavigationButton {
+         rightBarButtons.append(secondaryRightNavigationButton.buttonItem)
+     }
++    selfController.updateAITranslationHeaderButtonAppearance()
++    if selfController.shouldDisplayAITranslationHeaderButton(), let aiTranslationNavigationButtonItem = selfController.aiTranslationNavigationButtonItem {
++        rightBarButtons.append(aiTranslationNavigationButtonItem)
++    }
+     var rightBarButtonsUpdated = false
+     let currentRightBarButtons = selfController.navigationItem.rightBarButtonItems ?? []
+     if rightBarButtons.count != currentRightBarButtons.count {
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index f344f3ce9c..852e5d5f5d 100644
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -301,6 +302,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+     var rightNavigationButton: ChatNavigationButton?
+     var secondaryRightNavigationButton: ChatNavigationButton?
+     var chatInfoNavigationButton: ChatNavigationButton?
++    var aiTranslationNavigationButtonItem: UIBarButtonItem?
++    var aiTranslationHeaderButton: TranslationToggleNode?
+     
+     var moreBarButton: MoreHeaderButton
+     var moreInfoNavigationButton: ChatNavigationButton?
+@@ -5609,6 +5612,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         
+         self.moreBarButton.setContent(.more(MoreHeaderButton.optionsCircleImage(color: self.presentationData.theme.rootController.navigationBar.buttonColor)))
+         self.moreInfoNavigationButton = ChatNavigationButton(action: .toggleInfoPanel, buttonItem: UIBarButtonItem(customDisplayNode: self.moreBarButton)!)
++        let aiTranslationButton = TranslationToggleNode(frame: CGRect(origin: .zero, size: CGSize(width: 34.0, height: 26.0)))
++        aiTranslationButton.addTarget(self, action: #selector(self.aiTranslationHeaderButtonPressed), for: .touchUpInside)
++        self.aiTranslationHeaderButton = aiTranslationButton
++        self.aiTranslationNavigationButtonItem = UIBarButtonItem(customView: aiTranslationButton)
++        self.updateAITranslationHeaderButtonAppearance()
+         self.moreBarButton.contextAction = { [weak self] sourceNode, gesture in
+             guard let self else {
+                 return
+@@ -7660,6 +7668,51 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         self.moreBarButton.contextAction?(self.moreBarButton.containerNode, nil)
+     }
+     
++    @objc func aiTranslationHeaderButtonPressed() {
++        guard let peerId = self.chatLocation.peerId, peerId.namespace != Namespaces.Peer.SecretChat else {
++            return
++        }
++        let chatId = String(peerId.toInt64())
++        let enabled = AITranslationConfig.shared.togglePerChatEnabled(forChatID: chatId)
++        self.updateAITranslationHeaderButtonAppearance()
++        
++        let currentSettings = self.context.sharedContext.currentPresentationData.with { $0 }
++        let text = enabled ? "AI translation enabled for this chat" : "AI translation disabled for this chat"
++        self.present(
++            UndoOverlayController(
++                presentationData: currentSettings,
++                content: .universal(animation: "anim_linkcopied", scale: 0.08, colors: [:], title: nil, text: text, customUndoText: nil, timeout: 1.5),
++                elevatedLayout: false,
++                animateInAsReplacement: false,
++                action: { _ in false }
++            ),
++            in: .current
++        )
++    }
++    
++    func shouldDisplayAITranslationHeaderButton() -> Bool {
++        guard let peerId = self.chatLocation.peerId else {
++            return false
++        }
++        return peerId.namespace != Namespaces.Peer.SecretChat
++    }
++    
++    func updateAITranslationHeaderButtonAppearance() {
++        guard let button = self.aiTranslationHeaderButton else {
++            return
++        }
++        guard let peerId = self.chatLocation.peerId, peerId.namespace != Namespaces.Peer.SecretChat else {
++            button.isHidden = true
++            return
++        }
++        button.isHidden = false
++        let settings = AITranslationConfig.shared.load()
++        let chatId = String(peerId.toInt64())
++        let perChatEnabled = settings.perChatEnabled[chatId] ?? true
++        let anyDirectionEnabled = settings.translateIncomingEnabled || settings.translateOutgoingEnabled
++        button.isTranslationEnabled = settings.globalEnabled && perChatEnabled && anyDirectionEnabled
++    }
++    
+     public func beginClearHistory(type: InteractiveHistoryClearingType) {
+         guard case let .peer(peerId) = self.chatLocation else {
+             return

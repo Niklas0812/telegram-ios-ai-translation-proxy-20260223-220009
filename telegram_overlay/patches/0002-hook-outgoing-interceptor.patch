@@ -1,3 +1,116 @@
-# PLACEHOLDER_PATCH
-# 0002-hook-outgoing-interceptor.patch
-# Intended scope: outgoing text send path interception before enqueueMessages.
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index f344f3ce9c..b57203435c 100644
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -147,6 +147,7 @@ import ChatInputAccessoryPanel
+ import GlobalControlPanelsContext
+ import ChatSearchNavigationContentNode
+ import ChatAgeRestrictionAlertController
++import AITranslation
+ 
+ public final class ChatControllerOverlayPresentationData {
+     public let expandData: (ASDisplayNode?, () -> Void)
+@@ -8284,7 +8285,66 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         return .single(false)
+     }
+     
+-    func sendMessages(_ messages: [EnqueueMessage], media: Bool = false, postpone: Bool = false, commit: Bool = false) {
++    private func canApplyAITranslationToOutgoingMessages(_ messages: [EnqueueMessage], media: Bool, peerId: PeerId, skipAITranslation: Bool) -> Bool {
++        if skipAITranslation || media || messages.isEmpty {
++            return false
++        }
++        if peerId.namespace == Namespaces.Peer.SecretChat {
++            return false
++        }
++        for message in messages {
++            switch message {
++            case let .message(text, _, _, mediaReference, _, _, _, _, _, _):
++                if mediaReference != nil {
++                    return false
++                }
++                if text.isEmpty {
++                    continue
++                }
++            case .forward:
++                return false
++            }
++        }
++        return true
++    }
++    
++    private func aiTranslatedOutgoingMessages(_ messages: [EnqueueMessage], peerId: PeerId) async -> [EnqueueMessage] {
++        let chatId = String(peerId.toInt64())
++        var result: [EnqueueMessage] = []
++        result.reserveCapacity(messages.count)
++
++        for message in messages {
++            switch message {
++            case let .message(text, attributes, inlineStickers, mediaReference, threadId, replyToMessageId, replyToStoryId, localGroupingKey, correlationId, bubbleUpEmojiOrStickersets):
++                guard mediaReference == nil, !text.isEmpty else {
++                    result.append(message)
++                    continue
++                }
++
++                let translatedText = await AITranslationService.shared.translateOutgoing(text: text, chatID: chatId)
++                result.append(
++                    .message(
++                        text: translatedText,
++                        attributes: attributes,
++                        inlineStickers: inlineStickers,
++                        mediaReference: mediaReference,
++                        threadId: threadId,
++                        replyToMessageId: replyToMessageId,
++                        replyToStoryId: replyToStoryId,
++                        localGroupingKey: localGroupingKey,
++                        correlationId: correlationId,
++                        bubbleUpEmojiOrStickersets: bubbleUpEmojiOrStickersets
++                    )
++                )
++            case .forward:
++                result.append(message)
++            }
++        }
++
++        return result
++    }
++
++    func sendMessages(_ messages: [EnqueueMessage], media: Bool = false, postpone: Bool = false, commit: Bool = false, skipAITranslation: Bool = false) {
+         if case let .customChatContents(customChatContents) = self.subject {
+             customChatContents.enqueueMessages(messages: messages)
+             return
+@@ -8294,12 +8354,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+             return
+         }
+         
++        if self.canApplyAITranslationToOutgoingMessages(messages, media: media, peerId: peerId, skipAITranslation: skipAITranslation) {
++            Task { [weak self] in
++                guard let self else {
++                    return
++                }
++                let translatedMessages = await self.aiTranslatedOutgoingMessages(messages, peerId: peerId)
++                Task { @MainActor [weak self] in
++                    self?.sendMessages(translatedMessages, media: media, postpone: postpone, commit: commit, skipAITranslation: true)
++                }
++            }
++            return
++        }
++
+         let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
+         |> deliverOnMainQueue).startStandalone(next: { [weak self] shouldDivert in
+             guard let self else {
+                 return
+             }
+-            
++
+             var messages = messages
+             var shouldOpenScheduledMessages = false
+             
+@@ -8346,7 +8419,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+             } else {
+                 self.presentScheduleTimePicker(style: media ? .media : .default, dismissByTapOutside: false, completion: { [weak self] time, repeatPeriod in
+                     if let strongSelf = self {
+-                        strongSelf.sendMessages(strongSelf.transformEnqueueMessages(messages, silentPosting: false, scheduleTime: time, repeatPeriod: repeatPeriod, postpone: postpone), commit: true)
++                        strongSelf.sendMessages(strongSelf.transformEnqueueMessages(messages, silentPosting: false, scheduleTime: time, repeatPeriod: repeatPeriod, postpone: postpone), commit: true, skipAITranslation: skipAITranslation)
+                     }
+                 })
+             }

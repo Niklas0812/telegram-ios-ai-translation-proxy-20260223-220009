@@ -61,4 +61,32 @@ public final class AITranslationConfig {
         guard let chatID else { return true }
         return settings.perChatEnabled[chatID] ?? true
     }
+    
+    public func perChatOverride(forChatID chatID: String?) -> Bool? {
+        guard let chatID else { return nil }
+        let settings = load()
+        return settings.perChatEnabled[chatID]
+    }
+    
+    @discardableResult
+    public func setPerChatEnabled(_ enabled: Bool, forChatID chatID: String?) -> Bool {
+        guard let chatID else { return enabled }
+        update { settings in
+            if enabled {
+                settings.perChatEnabled.removeValue(forKey: chatID)
+            } else {
+                settings.perChatEnabled[chatID] = false
+            }
+        }
+        return enabled
+    }
+    
+    @discardableResult
+    public func togglePerChatEnabled(forChatID chatID: String?) -> Bool {
+        guard let chatID else { return true }
+        let current = load().perChatEnabled[chatID] ?? true
+        let updated = !current
+        _ = setPerChatEnabled(updated, forChatID: chatID)
+        return updated
+    }
 }

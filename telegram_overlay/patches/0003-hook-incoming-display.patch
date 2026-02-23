@@ -1,3 +1,58 @@
-# PLACEHOLDER_PATCH
-# 0003-hook-incoming-display.patch
-# Intended scope: display-layer translation injection for incoming text messages only.
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/BUILD
+index 5654796921..ac755accde 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/BUILD
+@@ -38,6 +38,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/TextLoadingEffect",
+         "//submodules/TelegramUI/Components/ChatControllerInteraction",
+         "//submodules/TelegramUI/Components/InteractiveTextComponent",
++        "//submodules/AITranslation:AITranslation",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift
+index 23010fb8b5..ce3f33f09a 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift
+@@ -26,6 +26,7 @@ import ChatMessageItemCommon
+ import TextLoadingEffect
+ import ChatControllerInteraction
+ import InteractiveTextComponent
++import AITranslation
+ 
+ private final class CachedChatMessageText {
+     let text: String
+@@ -449,6 +450,33 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
+                     if item.controllerInteraction.summarizedMessageIds.contains(item.message.id) {
+                         isSummarized = true
+                     }
++
++                    if incoming && !rawText.isEmpty && translateToLanguage == nil && !isSummarized {
++                        let chatId = String(item.message.id.peerId.toInt64())
++                        let messageKey = String(describing: item.message.id)
++                        let requestedMessageId = item.message.id
++                        if let aiTranslatedText = AITranslationService.shared.cachedIncomingDisplayTranslation(text: rawText, messageKey: messageKey, chatID: chatId) {
++                            if aiTranslatedText != rawText {
++                                rawText = aiTranslatedText
++                                messageEntities = nil
++                            }
++                        } else {
++                            AITranslationService.shared.requestIncomingDisplayTranslationIfNeeded(
++                                text: rawText,
++                                chatID: chatId,
++                                messageKey: messageKey,
++                                onUpdate: { [weak self] in
++                                    guard let self, let item = self.item else {
++                                        return
++                                    }
++                                    guard item.message.id == requestedMessageId else {
++                                        return
++                                    }
++                                    item.controllerInteraction.requestMessageUpdate(item.message.id, false)
++                                }
++                            )
++                        }
++                    }
+                     
+                     if let subject = item.associatedData.subject, case .messageOptions = subject {
+                     } else if !item.message.text.isEmpty && incoming {

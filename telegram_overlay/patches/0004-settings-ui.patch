@@ -1,3 +1,68 @@
-# PLACEHOLDER_PATCH
-# 0004-settings-ui.patch
-# Intended scope: Telegram Settings -> AI Translation + Dev Settings screens.
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
+index c35771e65c..a37ae824d1 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
+@@ -80,6 +80,7 @@ swift_library(
+         "//submodules/PeerInfoAvatarListNode",
+         "//submodules/TelegramUI/Components/PeerInfo/PeerInfoStoryGridScreen",
+         "//submodules/PeerInfoUI",
++        "//submodules/AITranslation:AITranslation",
+         "//submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode",
+         "//submodules/TelegramUI/Components/Settings/PeerNameColorScreen",
+         "//submodules/PeerPresenceStatusManager",
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
+index fdb533285d..fd3dac2bc1 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
+@@ -186,6 +186,7 @@ enum PeerInfoSettingsSection {
+     case powerSaving
+     case businessSetup
+     case profile
++    case aiTranslation
+     case premiumManagement
+     case stars
+     case ton
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
+index 0e64cec1d7..2ab9104f67 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
+@@ -16,6 +16,7 @@ import TelegramPresentationData
+ import PresentationDataUtils
+ import PasswordSetupUI
+ import InstantPageCache
++import AITranslation
+ 
+ extension PeerInfoScreenNode {
+     func openSettings(section: PeerInfoSettingsSection) {
+@@ -51,6 +52,8 @@ extension PeerInfoScreenNode {
+             self.headerNode.navigationButtonContainer.performAction?(.edit, nil, nil)
+         case .proxy:
+             self.controller?.push(proxySettingsController(context: self.context))
++        case .aiTranslation:
++            self.controller?.push(AISettingsController())
+         case .profile:
+             self.controller?.push(PeerInfoScreenImpl(
+                 context: self.context,
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
+index 9703be2db2..9cd9cd7bcb 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
+@@ -13,6 +13,7 @@ import ItemListPeerItem
+ import DeviceAccess
+ import TelegramStringFormatting
+ import PeerNameColorItem
++import AITranslation
+ 
+ enum SettingsSection: Int, CaseIterable {
+     case edit
+@@ -247,6 +248,10 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 4, label: .text(languageName.isEmpty ? presentationData.strings.Localization_LanguageName : languageName), text: presentationData.strings.Settings_AppLanguage, icon: PresentationResourcesSettings.language, action: {
+         interaction.openSettings(.language)
+     }))
++    let aiTranslationEnabledLabel = AITranslationConfig.shared.load().globalEnabled ? "On" : "Off"
++    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 7, label: .text(aiTranslationEnabledLabel), text: "AI Translation", icon: PresentationResourcesSettings.proxy, action: {
++        interaction.openSettings(.aiTranslation)
++    }))
+     
+     let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
+     let isPremiumDisabled = premiumConfiguration.isPremiumDisabled

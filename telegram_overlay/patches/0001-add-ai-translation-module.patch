@@ -1,4 +1,12 @@
-# PLACEHOLDER_PATCH
-# 0001-add-ai-translation-module.patch
-# Replace with a real git-format patch after validating Telegram-iOS Bazel target wiring
-# against the chosen upstream revision.
+diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
+index 7170d356e7..28f027808f 100644
+--- a/submodules/TelegramUI/BUILD
++++ b/submodules/TelegramUI/BUILD
+@@ -268,6 +268,7 @@ swift_library(
+         "//submodules/ChatMessageBackground:ChatMessageBackground",
+         "//submodules/PeerInfoUI/CreateExternalMediaStreamScreen:CreateExternalMediaStreamScreen",
+         "//submodules/TranslateUI:TranslateUI",
++        "//submodules/AITranslation:AITranslation",
+         "//submodules/BrowserUI:BrowserUI",
+         "//submodules/PremiumUI:PremiumUI",
+         "//submodules/Components/HierarchyTrackingLayer:HierarchyTrackingLayer",

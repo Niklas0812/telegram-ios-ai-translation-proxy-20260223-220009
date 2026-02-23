@@ -27,6 +27,8 @@ public final class AITranslationService {
     private let proxyClient: AIProxyClient
     private let cache: TranslationCache
     private let contextProvider: ConversationContextProviding
+    private let stateQueue = DispatchQueue(label: "AITranslationService.state")
+    private var inflightIncomingKeys: Set<String> = []
 
     public init(
         config: AITranslationConfig = .shared,
@@ -59,7 +61,7 @@ public final class AITranslationService {
         guard !text.isEmpty else { return AITranslationDisplayResult(text: text, wasTranslated: false, originalText: text) }
         guard isEnabled(chatID: chatID, direction: .incoming) else { return AITranslationDisplayResult(text: text, wasTranslated: false, originalText: text) }
 
-        let cacheKey = "incoming|\(messageKey)|\(text.hashValue)"
+        let cacheKey = incomingCacheKey(text: text, messageKey: messageKey)
         if let cached = cache.value(forKey: cacheKey) {
             return AITranslationDisplayResult(text: cached, wasTranslated: cached != text, originalText: text)
         }
@@ -69,6 +71,48 @@ public final class AITranslationService {
         let response = await proxyClient.translate(baseURL: settings.proxyBaseURL, request: request)
         cache.setValue(response.translatedText, forKey: cacheKey)
         return AITranslationDisplayResult(text: response.translatedText, wasTranslated: response.translatedText != text, originalText: text)
+    }
+    
+    public func cachedIncomingDisplayTranslation(text: String, messageKey: String, chatID: String?) -> String? {
+        guard !text.isEmpty else { return text }
+        guard isEnabled(chatID: chatID, direction: .incoming) else { return nil }
+        return cache.value(forKey: incomingCacheKey(text: text, messageKey: messageKey))
+    }
+    
+    public func requestIncomingDisplayTranslationIfNeeded(
+        text: String,
+        chatID: String?,
+        messageKey: String,
+        onUpdate: @escaping () -> Void
+    ) {
+        guard !text.isEmpty else { return }
+        guard isEnabled(chatID: chatID, direction: .incoming) else { return }
+        
+        let cacheKey = incomingCacheKey(text: text, messageKey: messageKey)
+        if cache.value(forKey: cacheKey) != nil {
+            return
+        }
+        
+        let shouldStart = stateQueue.sync { () -> Bool in
+            if inflightIncomingKeys.contains(cacheKey) {
+                return false
+            }
+            inflightIncomingKeys.insert(cacheKey)
+            return true
+        }
+        
+        guard shouldStart else { return }
+        
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.translateIncomingDisplayText(text: text, chatID: chatID, messageKey: messageKey)
+            self.stateQueue.sync {
+                self.inflightIncomingKeys.remove(cacheKey)
+            }
+            DispatchQueue.main.async {
+                onUpdate()
+            }
+        }
     }
 
     public func testConnection() async -> Bool {
@@ -86,5 +130,9 @@ public final class AITranslationService {
         return contextProvider
             .recentContext(chatID: chatID, limit: min(100, max(2, settings.contextMessageCount)))
             .map { AIProxyContextMessage(role: $0.role, text: $0.text) }
+    }
+    
+    private func incomingCacheKey(text: String, messageKey: String) -> String {
+        "incoming|\(messageKey)|\(text.hashValue)"
     }
 }
