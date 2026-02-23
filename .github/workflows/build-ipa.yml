@@ -18,16 +18,29 @@ jobs:
   build-ipa:
     runs-on: macos-14
     env:
-      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || 'TELEGRAM_API_ID_PLACEHOLDER' }}
-      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || 'TELEGRAM_API_HASH_PLACEHOLDER' }}
+      TELEGRAM_API_ID: TELEGRAM_API_ID_PLACEHOLDER
+      TELEGRAM_API_HASH: TELEGRAM_API_HASH_PLACEHOLDER
       TELEGRAM_BUNDLE_ID: com.aitranslate.messenger
       TELEGRAM_APP_NAME: TranslateGram
       TELEGRAM_IOS_REPO: https://github.com/TelegramMessenger/Telegram-iOS.git
       TELEGRAM_IOS_REF: master
-      APPLY_AI_PATCHES: ${{ github.event.inputs.apply_ai_patches == 'true' && '1' || '0' }}
+      APPLY_AI_PATCHES: "1"
     steps:
       - name: Checkout overlay repo
         uses: actions/checkout@v4
+
+      - name: Override Telegram API placeholders from secrets (if provided)
+        shell: bash
+        run: |
+          if [[ -n "${{ secrets.TELEGRAM_API_ID }}" ]]; then
+            echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" >> "$GITHUB_ENV"
+          fi
+          if [[ -n "${{ secrets.TELEGRAM_API_HASH }}" ]]; then
+            echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> "$GITHUB_ENV"
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.apply_ai_patches }}" == "false" ]]; then
+            echo "APPLY_AI_PATCHES=0" >> "$GITHUB_ENV"
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
