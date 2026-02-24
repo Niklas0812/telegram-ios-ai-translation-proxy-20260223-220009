@@ -97,6 +97,14 @@ jobs:
         working-directory: vendor/Telegram-iOS
         run: |
           set -euo pipefail
+          if command -v brew >/dev/null 2>&1; then
+            OPENSSL3_PREFIX="$(brew --prefix openssl@3 2>/dev/null || true)"
+            if [[ -n "${OPENSSL3_PREFIX:-}" && -x "$OPENSSL3_PREFIX/bin/openssl" ]]; then
+              export PATH="$OPENSSL3_PREFIX/bin:$PATH"
+            fi
+          fi
+          echo "Using openssl at: $(command -v openssl)"
+          openssl version || true
           echo "TELEGRAM_CODESIGNING_DIR=build-system/fake-codesigning" >> "$GITHUB_ENV"
           mkdir -p build-inputs/verification-codesigning/certs
           mkdir -p build-inputs/verification-codesigning/profiles
@@ -119,6 +127,12 @@ jobs:
         working-directory: vendor/Telegram-iOS
         run: |
           set -euo pipefail
+          if command -v brew >/dev/null 2>&1; then
+            OPENSSL3_PREFIX="$(brew --prefix openssl@3 2>/dev/null || true)"
+            if [[ -n "${OPENSSL3_PREFIX:-}" && -x "$OPENSSL3_PREFIX/bin/openssl" ]]; then
+              export PATH="$OPENSSL3_PREFIX/bin:$PATH"
+            fi
+          fi
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
           python3 build-system/Make/Make.py \
             --overrideXcodeVersion \
