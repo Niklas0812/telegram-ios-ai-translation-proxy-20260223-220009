@@ -17,6 +17,7 @@ on:
 jobs:
   build-ipa:
     runs-on: macos-latest
+    timeout-minutes: 360
     env:
       TELEGRAM_API_ID: TELEGRAM_API_ID_PLACEHOLDER
       TELEGRAM_API_HASH: TELEGRAM_API_HASH_PLACEHOLDER
@@ -92,20 +93,38 @@ jobs:
       - name: Configure Telegram build placeholders
         run: ./telegram_overlay/scripts/configure_telegram_build.sh vendor/Telegram-iOS
 
-      - name: Attempt Telegram-iOS build (scaffold)
+      - name: Generate verification provisioning profiles
         working-directory: vendor/Telegram-iOS
         run: |
           set -euo pipefail
-          if [[ -f build-system/Make/Make.py ]]; then
-            echo "Found build-system/Make/Make.py"
-            python3 build-system/Make/Make.py --help || true
-          elif [[ -f Make.py ]]; then
-            echo "Found Make.py"
-            python3 Make.py --help || true
-          else
-            echo "Could not locate Telegram-iOS Make.py entrypoint"
+          mkdir -p build-inputs/verification-codesigning/certs
+          mkdir -p build-inputs/verification-codesigning/profiles
+          cp -f build-system/fake-codesigning/certs/* build-inputs/verification-codesigning/certs/
+          python3 build-system/Make/Make.py \
+            --overrideXcodeVersion \
+            generate-verification-profiles \
+            --configurationPath=build-system/appstore-configuration.json \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --destination=build-inputs/verification-codesigning/profiles \
+            --certsPath=build-system/fake-codesigning/certs
+
+      - name: Build Telegram-iOS IPA (release_arm64 verification)
+        working-directory: vendor/Telegram-iOS
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          python3 build-system/Make/Make.py \
+            --overrideXcodeVersion \
+            --cacheDir="$RUNNER_TEMP/telegram-bazel-cache" \
+            build \
+            --configurationPath=build-system/appstore-configuration.json \
+            --codesigningInformationPath=build-inputs/verification-codesigning \
+            --buildNumber=100001 \
+            --configuration=release_arm64 \
+            --outputBuildArtifactsPath="$GITHUB_WORKSPACE/artifacts"
+          if [[ -f "$GITHUB_WORKSPACE/artifacts/Telegram.ipa" ]]; then
+            cp "$GITHUB_WORKSPACE/artifacts/Telegram.ipa" "$GITHUB_WORKSPACE/artifacts/TranslateGram-verification.ipa"
           fi
-          echo "Telegram-iOS build command wiring is scaffolded but requires upstream revision-specific config integration."
 
       - name: Locate app bundle (best-effort)
         id: appbundle
@@ -125,6 +144,7 @@ jobs:
           ./telegram_overlay/scripts/package_unsigned_ipa.sh "${{ steps.appbundle.outputs.app_path }}" "$(pwd)/artifacts/TranslateGram.ipa"
 
       - name: Upload build artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: telegram-ios-build-artifacts
