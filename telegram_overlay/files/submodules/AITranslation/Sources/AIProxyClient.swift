@@ -62,7 +62,7 @@ public final class AIProxyClient {
     }
 
     public func translate(baseURL: String, request: AIProxyTranslateRequest) async -> AIProxyTranslateResponse {
-        let normalizedBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let normalizedBaseURL = Self.normalizeBaseURL(baseURL)
         guard let url = URL(string: normalizedBaseURL + "/translate") else {
             return AIProxyTranslateResponse(translatedText: request.text, originalText: request.text, direction: request.direction, translationFailed: true)
         }
@@ -89,7 +89,7 @@ public final class AIProxyClient {
     }
 
     public func checkHealth(baseURL: String) async -> Bool {
-        let normalizedBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let normalizedBaseURL = Self.normalizeBaseURL(baseURL)
         guard let url = URL(string: normalizedBaseURL + "/health") else {
             return false
         }
@@ -102,5 +102,25 @@ public final class AIProxyClient {
         } catch {
             return false
         }
+    }
+    
+    private static func normalizeBaseURL(_ rawValue: String) -> String {
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty {
+            return value
+        }
+        if !value.contains("://") {
+            value = "https://" + value
+        }
+        guard var components = URLComponents(string: value) else {
+            return value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        if components.path == "/translate" || components.path == "/health" || components.path == "/stats" {
+            components.path = ""
+        }
+        components.query = nil
+        components.fragment = nil
+        let normalized = components.string ?? value
+        return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 }

@@ -17,6 +17,7 @@ public final class AISettingsController: ViewController {
     private let proxyURLField = UITextField()
     private let connectionStatusLabel = UILabel()
     private let testConnectionButton = UIButton(type: .system)
+    private let applyProxyURLButton = UIButton(type: .system)
     private let devSettingsButton = UIButton(type: .system)
     
     private var isTestingConnection = false
@@ -78,6 +79,17 @@ public final class AISettingsController: ViewController {
         self.proxyURLField.addTarget(self, action: #selector(self.proxyEditingEnded), for: .editingDidEndOnExit)
         self.stackView.addArrangedSubview(self.proxyURLField)
         
+        let cloudflareHintLabel = UILabel()
+        cloudflareHintLabel.font = UIFont.systemFont(ofSize: 13.0)
+        cloudflareHintLabel.textColor = .secondaryLabel
+        cloudflareHintLabel.numberOfLines = 0
+        cloudflareHintLabel.text = "Paste your current Cloudflared tunnel URL here (for example: https://abc123.trycloudflare.com). You can also paste a full /translate URL; the app will normalize it."
+        self.stackView.addArrangedSubview(cloudflareHintLabel)
+        
+        self.applyProxyURLButton.setTitle("Apply Proxy URL", for: .normal)
+        self.applyProxyURLButton.addTarget(self, action: #selector(self.applyProxyURLPressed), for: .touchUpInside)
+        self.stackView.addArrangedSubview(self.applyProxyURLButton)
+        
         self.connectionStatusLabel.font = UIFont.systemFont(ofSize: 14.0)
         self.connectionStatusLabel.textColor = .secondaryLabel
         self.connectionStatusLabel.text = "Connection Status: Unknown"
@@ -119,6 +131,14 @@ public final class AISettingsController: ViewController {
     
     @objc private func proxyEditingEnded() {
         self.saveSettings()
+    }
+    
+    @objc private func applyProxyURLPressed() {
+        self.view.endEditing(true)
+        self.saveSettings()
+        self.reloadFromConfig()
+        self.connectionStatusLabel.text = "Connection Status: Proxy URL updated"
+        self.connectionStatusLabel.textColor = .secondaryLabel
     }
     
     @objc private func testConnectionPressed() {
@@ -165,7 +185,7 @@ public final class AISettingsController: ViewController {
     }
     
     private func saveSettings() {
-        let proxyURL = (self.proxyURLField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let proxyURL = Self.normalizeProxyBaseURL(self.proxyURLField.text ?? "")
         AITranslationConfig.shared.update { settings in
             settings.globalEnabled = self.globalToggle.isOn
             settings.translateIncomingEnabled = self.incomingToggle.isOn
@@ -173,6 +193,26 @@ public final class AISettingsController: ViewController {
             settings.showRawAPIResponses = self.rawResponsesToggle.isOn
             settings.proxyBaseURL = proxyURL
         }
+    }
+    
+    private static func normalizeProxyBaseURL(_ rawValue: String) -> String {
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty {
+            return ""
+        }
+        if !value.contains("://") {
+            value = "https://" + value
+        }
+        guard var components = URLComponents(string: value) else {
+            return value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        if components.path == "/translate" || components.path == "/health" || components.path == "/stats" {
+            components.path = ""
+        }
+        components.query = nil
+        components.fragment = nil
+        let normalized = components.string ?? value
+        return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
     
     private static func sectionHeader(_ text: String) -> UILabel {
