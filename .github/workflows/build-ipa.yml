@@ -93,20 +93,27 @@ jobs:
       - name: Configure Telegram build placeholders
         run: ./telegram_overlay/scripts/configure_telegram_build.sh vendor/Telegram-iOS
 
-      - name: Generate verification provisioning profiles
+      - name: Prepare codesigning directory (verification fallback)
         working-directory: vendor/Telegram-iOS
         run: |
           set -euo pipefail
+          echo "TELEGRAM_CODESIGNING_DIR=build-system/fake-codesigning" >> "$GITHUB_ENV"
           mkdir -p build-inputs/verification-codesigning/certs
           mkdir -p build-inputs/verification-codesigning/profiles
           cp -f build-system/fake-codesigning/certs/* build-inputs/verification-codesigning/certs/
-          python3 build-system/Make/Make.py \
+          if python3 build-system/Make/Make.py \
             --overrideXcodeVersion \
             generate-verification-profiles \
             --configurationPath=build-system/appstore-configuration.json \
             --codesigningInformationPath=build-system/fake-codesigning \
             --destination=build-inputs/verification-codesigning/profiles \
             --certsPath=build-system/fake-codesigning/certs
+          then
+            echo "TELEGRAM_CODESIGNING_DIR=build-inputs/verification-codesigning" >> "$GITHUB_ENV"
+            echo "Using generated verification provisioning profiles"
+          else
+            echo "Verification profile generation failed; falling back to build-system/fake-codesigning"
+          fi
 
       - name: Build Telegram-iOS IPA (release_arm64 verification)
         working-directory: vendor/Telegram-iOS
@@ -118,7 +125,7 @@ jobs:
             --cacheDir="$RUNNER_TEMP/telegram-bazel-cache" \
             build \
             --configurationPath=build-system/appstore-configuration.json \
-            --codesigningInformationPath=build-inputs/verification-codesigning \
+            --codesigningInformationPath="$TELEGRAM_CODESIGNING_DIR" \
             --buildNumber=100001 \
             --configuration=release_arm64 \
             --outputBuildArtifactsPath="$GITHUB_WORKSPACE/artifacts"
