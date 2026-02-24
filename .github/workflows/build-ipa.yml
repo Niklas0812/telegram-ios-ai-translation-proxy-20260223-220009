@@ -16,7 +16,7 @@ on:
 
 jobs:
   build-ipa:
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       TELEGRAM_API_ID: TELEGRAM_API_ID_PLACEHOLDER
       TELEGRAM_API_HASH: TELEGRAM_API_HASH_PLACEHOLDER
