@@ -19,7 +19,7 @@ public final class AIDevSettingsController: ViewController {
         self.title = "AI Translation Dev Settings"
     }
     
-    public required init?(coder: NSCoder) {
+    public required init(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     

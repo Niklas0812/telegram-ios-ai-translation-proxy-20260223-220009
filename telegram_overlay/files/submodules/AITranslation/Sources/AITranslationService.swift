@@ -106,7 +106,7 @@ public final class AITranslationService {
         Task { [weak self] in
             guard let self else { return }
             _ = await self.translateIncomingDisplayText(text: text, chatID: chatID, messageKey: messageKey)
-            self.stateQueue.sync {
+            _ = self.stateQueue.sync {
                 self.inflightIncomingKeys.remove(cacheKey)
             }
             DispatchQueue.main.async {
